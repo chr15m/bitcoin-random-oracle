@@ -340,10 +340,12 @@ class msg_version(object):
 			self.addrFrom.deserialize(f)
 			self.nNonce = struct.unpack("<Q", f.read(8))[0]
 			self.strSubVer = deser_string(f)
+			self.nStartingHeight = None
 			if self.nVersion >= 209:
-				self.nStartingHeight = struct.unpack("<i", f.read(4))[0]
-			else:
-				self.nStartingHeight = None
+				try:
+					self.nStartingHeight = struct.unpack("<i", f.read(4))[0]
+				except:
+					pass
 		else:
 			self.addrFrom = None
 			self.nNonce = None
@@ -526,12 +528,6 @@ class BitcoinNode(threading.Thread):
 
 			self.state = "connecting"
 
-			t = msg_version()
-			t.addrTo.ip = self.dstaddr
-			t.addrTo.port = self.dstport
-			t.addrFrom.ip = "0.0.0.0"
-			t.addrFrom.port = 0
-			self.send_message(t)
 			print "connecting %s" % self.dstaddr
 			self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 			try:
@@ -569,6 +565,13 @@ class BitcoinNode(threading.Thread):
 			self.state = "connected"
 			print "connected"
 
+		t = msg_version()
+		t.addrTo.ip = self.dstaddr
+		t.addrTo.port = self.dstport
+		t.addrFrom.ip = "0.0.0.0"
+		t.addrFrom.port = 0
+		self.send_message(t)
+
 	def handle_close(self):
 		if self.state != "closed":
 			print "close"
@@ -592,10 +595,7 @@ class BitcoinNode(threading.Thread):
 			self.handle_close()
 			return
 		self.recvbuf += t
-		try:
-			self.got_data()
-		except ValueError:
-			self.handle_close()
+		self.got_data()
 
 	def readable(self):
 		return True
@@ -648,17 +648,17 @@ class BitcoinNode(threading.Thread):
 	def send_message(self, message):
 		if self.state != "connected":
 			return
-		#print "send %s" % repr(message)
+		print "send %s" % repr(message)
 		command = message.command
 		data = message.serialize()
 		tmsg = "\xf9\xbe\xb4\xd9"
 		tmsg += command
 		tmsg += "\x00" * (12 - len(command))
-		tmsg += struct.pack("<I", len(data))
-		if self.ver_send >= 209:
-			th = SHA256.new(data).digest()
-			h = SHA256.new(th).digest()
-			tmsg += h[:4]
+		l = len(data)
+		tmsg += struct.pack("<I", l)
+		th = SHA256.new(data).digest()
+		h = SHA256.new(th).digest()
+		tmsg += h[:4]
 		tmsg += data
 		self.sendbuf += tmsg
 		self.last_sent = time.time()
@@ -666,6 +666,7 @@ class BitcoinNode(threading.Thread):
 		if self.last_sent + 30 * 60 < time.time():
 			self.send_message(msg_ping())
 
+		print "got", message.command
 		mname = 'do_' + message.command
 		if not hasattr(self, mname):
 			return
