@@ -510,8 +510,8 @@ class BitcoinNode(threading.Thread):
 		self.dstport = dstport
 		self.sendbuf = ""
 		self.recvbuf = ""
-		self.ver_send = 0
-		self.ver_recv = 0
+		self.ver_send = 209
+		self.ver_recv = 209
 		self.last_sent = 0
 		self.state = "idle"
 		self.e_stop = threading.Event()
