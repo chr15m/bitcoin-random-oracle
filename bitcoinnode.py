@@ -13,7 +13,7 @@ import random
 import cStringIO
 from Crypto.Hash import SHA256
 
-MY_VERSION = 312
+MY_VERSION = 70001
 MY_SUBVERSION = ".4"
 
 Cs = 0
@@ -327,8 +327,10 @@ class msg_version(object):
 		self.nNonce = random.getrandbits(64)
 		self.strSubVer = MY_SUBVERSION
 		self.nStartingHeight = -1
+		self.relay = True
 	def deserialize(self, f):
 		self.nVersion = struct.unpack("<i", f.read(4))[0]
+		print 'nVersion = ', self.nVersion
 		if self.nVersion == 10300:
 			self.nVersion = 300
 		self.nServices = struct.unpack("<Q", f.read(8))[0]
@@ -346,6 +348,10 @@ class msg_version(object):
 					self.nStartingHeight = struct.unpack("<i", f.read(4))[0]
 				except:
 					pass
+		if self.nVersion >= 70001:
+			b = f.read(1)
+			print "b = ", repr(b)
+			self.relay = struct.unpack("<?", b)[0]
 		else:
 			self.addrFrom = None
 			self.nNonce = None
@@ -510,8 +516,8 @@ class BitcoinNode(threading.Thread):
 		self.dstport = dstport
 		self.sendbuf = ""
 		self.recvbuf = ""
-		self.ver_send = 209
-		self.ver_recv = 209
+		self.ver_send = 70001
+		self.ver_recv = 70001
 		self.last_sent = 0
 		self.state = "idle"
 		self.e_stop = threading.Event()
@@ -521,8 +527,6 @@ class BitcoinNode(threading.Thread):
 
 	def run(self):
 		while not self.e_stop.isSet():
-			self.ver_send = 0
-			self.ver_recv = 0
 			self.last_sent = 0
 			self.state = "idle"
 
@@ -613,7 +617,13 @@ class BitcoinNode(threading.Thread):
 			if len(self.recvbuf) < 4:
 				return
 			if self.recvbuf[:4] != "\xf9\xbe\xb4\xd9":
-				raise ValueError("got garbage %s" % repr(self.recvbuf))
+				skip = self.recvbuf.find("\xf9\xbe\xb4\xd9")
+				if skip == -1:
+					raise ValueError("got garbage %s" % repr(self.recvbuf))
+				else:
+					print "Lost stream sync. Discarding first %i bytes" % skip
+					print "Buffer contents: %s" % repr(self.recvbuf)
+					self.recvbuf = self.recvbuf[skip:]
 			if self.ver_recv < 209:
 				if len(self.recvbuf) < 4 + 12 + 4:
 					return
